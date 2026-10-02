@@ -6,7 +6,10 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pyrogram import Client, filters
+from PIL import Image
+import inspect
 
+# 24/7 ஆன்லைனில் வைத்திருக்க ஒரு Dummy Server
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -21,6 +24,7 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
+# உங்களின் API விவரங்கள்
 API_ID = "33442108"
 API_HASH = "db58bfc24809316cecb3f5c83e84116c"
 BOT_TOKEN = "8281564589:AAE7NGNs3KZZ-Dnu94juPv2ecoJfnfMFDdc"
@@ -37,38 +41,63 @@ def start(client, message):
 def handle_media(client, message):
     user_id = message.from_user.id
     
-    # 1. Photo அல்லது Image File ஆக அனுப்பினால்
+    # 1. Photo-வை Thumbnail ஆக செட் செய்ய
     if message.photo or (message.document and message.document.mime_type and message.document.mime_type.startswith("image/")):
         if not os.path.exists("downloads"):
             os.makedirs("downloads")
-        file_path = message.download(file_name=f"downloads/{user_id}_thumb.jpg")
-        user_thumbnails[user_id] = file_path
-        message.reply_text("✅ Thumbnail சேமிக்கப்பட்டது! இப்போது Video-வை 'File' ஆக அனுப்புங்கள்.")
         
-    # 2. Video அல்லது Video File ஆக அனுப்பினால்
+        msg = message.reply_text("⏳ Saving and resizing thumbnail...")
+        raw_path = message.download(file_name=f"downloads/{user_id}_raw.jpg")
+        thumb_path = f"downloads/{user_id}_thumb.jpg"
+        
+        try:
+            # Telegram ரூல்ஸ் படி 320x320 அளவுக்குள் இமேஜை Resize செய்கிறது
+            img = Image.open(raw_path)
+            img.thumbnail((320, 320))
+            img.save(thumb_path, "JPEG")
+            os.remove(raw_path)
+            
+            user_thumbnails[user_id] = thumb_path
+            msg.edit_text("✅ Thumbnail சேமிக்கப்பட்டது! (320x320 Resized).\nஇப்போது Video-வை 'File' ஆக அனுப்புங்கள்.")
+        except Exception as e:
+            msg.edit_text("❌ Error processing image. வேறு ஒரு Photo-வை அனுப்புங்கள்.")
+            
+    # 2. Video-வை Thumbnail உடன் திருப்பி அனுப்ப
     elif message.video or (message.document and message.document.mime_type and message.document.mime_type.startswith("video/")):
         if user_id in user_thumbnails:
             msg = message.reply_text("⏳ Processing video file... Please wait.")
             video_path = message.download()
             thumb_path = user_thumbnails[user_id]
             
-            # File ஆக அனுப்பியிருந்தால் File ஆகவே திருப்பி அனுப்ப (Thumbnail-உடன்)
-            if message.document:
-                client.send_document(
-                    chat_id=message.chat.id,
-                    document=video_path,
-                    thumb=thumb_path,
-                    caption="Uploaded via Bot",
-                    force_document=True  # கட்டாயமாக File ஆக மாற்றும் கமாண்ட்
-                )
-            # சாதாரண Video ஆக அனுப்பியிருந்தால் Video ஆகவே திருப்பி அனுப்ப
-            else:
-                client.send_video(
-                    chat_id=message.chat.id,
-                    video=video_path,
-                    thumb=thumb_path,
-                    caption="Uploaded via Bot"
-                )
+            try:
+                kwargs = {
+                    "chat_id": message.chat.id,
+                    "caption": "Uploaded via Bot"
+                }
+                
+                # Pyrogram Version Compatibility
+                if "thumbnail" in inspect.signature(client.send_document).parameters:
+                    kwargs["thumbnail"] = thumb_path
+                else:
+                    kwargs["thumb"] = thumb_path
+                    
+                if message.document:
+                    kwargs["document"] = video_path
+                    kwargs["force_document"] = True
+                    
+                    # ஒரிஜினல் பைல் பெயரை எடுப்பது
+                    file_name = message.document.file_name
+                    if not file_name:
+                        file_name = "video.mp4"
+                    kwargs["file_name"] = file_name
+                    
+                    client.send_document(**kwargs)
+                else:
+                    kwargs["video"] = video_path
+                    client.send_video(**kwargs)
+                    
+            except Exception as e:
+                message.reply_text(f"❌ Error sending file: {e}")
                 
             os.remove(video_path)
             msg.delete()
