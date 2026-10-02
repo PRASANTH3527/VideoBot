@@ -8,6 +8,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pyrogram import Client, filters
 from PIL import Image
+import inspect
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -33,7 +34,7 @@ user_thumbnails = {}
 
 @app.on_message(filters.command("start"))
 def start(client, message):
-    message.reply_text("Hi! முதலில் ஒரு Photo-வை அனுப்புங்கள். பின்பு Video-வை 'File' ஆக அனுப்புங்கள்.")
+    message.reply_text("Hi! முதலில் ஒரு Photo-வை அனுப்புங்கள். பின்பு Video-வை அனுப்புங்கள்.")
 
 @app.on_message(filters.photo | filters.video | filters.document)
 def handle_media(client, message):
@@ -45,8 +46,6 @@ def handle_media(client, message):
             os.makedirs("downloads")
         
         msg = message.reply_text("⏳ Saving and resizing thumbnail...")
-        
-        # Caching-ஐ தவிர்க்க ஒவ்வொரு படத்திற்கும் ஒரு Unique பெயர் (Timestamp)
         unique_id = int(time.time())
         raw_path = message.download(file_name=f"downloads/{user_id}_{unique_id}_raw.jpg")
         thumb_path = f"downloads/{user_id}_{unique_id}_thumb.jpg"
@@ -57,40 +56,36 @@ def handle_media(client, message):
             img.save(thumb_path, "JPEG")
             os.remove(raw_path)
             
-            # பழைய thumbnail ஃபைல் சிஸ்டமில் இருந்தால் டெலீட் செய்ய
             if user_id in user_thumbnails and os.path.exists(user_thumbnails[user_id]):
                 os.remove(user_thumbnails[user_id])
                 
             user_thumbnails[user_id] = thumb_path
-            msg.edit_text("✅ Thumbnail சேமிக்கப்பட்டது! (320x320 Resized).\nஇப்போது Video-வை 'File' ஆக அனுப்புங்கள்.")
+            msg.edit_text("✅ Thumbnail சேமிக்கப்பட்டது! (320x320 Resized).\nஇப்போது Video-வை அனுப்புங்கள்.")
         except Exception as e:
-            msg.edit_text("❌ Error processing image. வேறு ஒரு Photo-வை அனுப்புங்கள்.")
+            msg.edit_text("❌ Error processing image.")
             
-    # 2. Video-வை Thumbnail உடன் திருப்பி அனுப்ப
+    # 2. Video-வை Thumbnail உடன் திருப்பி அனுப்ப (எப்போதும் Video ஆகவே அனுப்பும்)
     elif message.video or (message.document and message.document.mime_type and message.document.mime_type.startswith("video/")):
         if user_id in user_thumbnails:
-            msg = message.reply_text("⏳ Processing video file... Please wait.")
+            msg = message.reply_text("⏳ Processing video... Please wait.")
             video_path = message.download()
             thumb_path = user_thumbnails[user_id]
             
             try:
-                if message.document:
-                    file_name = message.document.file_name or "video.mp4"
-                    client.send_document(
-                        chat_id=message.chat.id,
-                        document=video_path,
-                        thumb=thumb_path,
-                        caption="Uploaded via Bot",
-                        force_document=True,
-                        file_name=file_name
-                    )
+                kwargs = {
+                    "chat_id": message.chat.id,
+                    "video": video_path,
+                    "caption": "Uploaded via Bot"
+                }
+                
+                if "thumbnail" in inspect.signature(client.send_video).parameters:
+                    kwargs["thumbnail"] = thumb_path
                 else:
-                    client.send_video(
-                        chat_id=message.chat.id,
-                        video=video_path,
-                        thumb=thumb_path,
-                        caption="Uploaded via Bot"
-                    )
+                    kwargs["thumb"] = thumb_path
+                    
+                # File ஆக அனுப்பினாலும், Bot குவாலிட்டி குறையாமல் Video ஆகவே திருப்பி அனுப்பும்
+                client.send_video(**kwargs)
+                
             except Exception as e:
                 message.reply_text(f"❌ Error sending file: {e}")
                 
