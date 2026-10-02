@@ -1,7 +1,11 @@
+import asyncio
+# Python 3.10+ பதிப்புகளுக்கான Event Loop Fix
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 from pyrogram import Client, filters
 import os
 
-# உங்களின் API விவரங்கள்
 API_ID = "33442108"
 API_HASH = "db58bfc24809316cecb3f5c83e84116c"
 BOT_TOKEN = "8281564589:AAE7NGNs3KZZ-Dnu94juPv2ecoJfnfMFDdc"
