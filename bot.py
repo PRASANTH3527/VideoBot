@@ -1,11 +1,29 @@
 import asyncio
-# Python 3.10+ பதிப்புகளுக்கான Event Loop Fix
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
-from pyrogram import Client, filters
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pyrogram import Client, filters
 
+# Render-க்காக ஒரு சிறிய Dummy Web Server
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), KeepAliveHandler)
+    server.serve_forever()
+
+# Server-ஐ தனியாக பின்னணியில் ரன் செய்ய
+threading.Thread(target=run_dummy_server, daemon=True).start()
+
+# உங்களின் API விவரங்கள்
 API_ID = "33442108"
 API_HASH = "db58bfc24809316cecb3f5c83e84116c"
 BOT_TOKEN = "8281564589:AAE7NGNs3KZZ-Dnu94juPv2ecoJfnfMFDdc"
