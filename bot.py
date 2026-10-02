@@ -33,7 +33,6 @@ user_thumbnails = {}
 def start(client, message):
     message.reply_text("Hi! முதலில் ஒரு Photo-வை அனுப்புங்கள். பின்பு Video-வை 'File' ஆக அனுப்புங்கள்.")
 
-# Photo, Video மற்றும் Document (File) அனைத்தையும் கையாளும் புதிய ஃபில்டர்
 @app.on_message(filters.photo | filters.video | filters.document)
 def handle_media(client, message):
     user_id = message.from_user.id
@@ -53,13 +52,14 @@ def handle_media(client, message):
             video_path = message.download()
             thumb_path = user_thumbnails[user_id]
             
-            # File ஆக அனுப்பியிருந்தால் File ஆகவே திருப்பி அனுப்ப
+            # File ஆக அனுப்பியிருந்தால் File ஆகவே திருப்பி அனுப்ப (Thumbnail-உடன்)
             if message.document:
                 client.send_document(
                     chat_id=message.chat.id,
                     document=video_path,
                     thumb=thumb_path,
-                    caption="Uploaded via Bot"
+                    caption="Uploaded via Bot",
+                    force_document=True  # கட்டாயமாக File ஆக மாற்றும் கமாண்ட்
                 )
             # சாதாரண Video ஆக அனுப்பியிருந்தால் Video ஆகவே திருப்பி அனுப்ப
             else:
