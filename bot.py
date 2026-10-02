@@ -7,7 +7,6 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pyrogram import Client, filters
 
-# Render-க்காக ஒரு சிறிய Dummy Web Server
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -20,10 +19,8 @@ def run_dummy_server():
     server = HTTPServer(('0.0.0.0', port), KeepAliveHandler)
     server.serve_forever()
 
-# Server-ஐ தனியாக பின்னணியில் ரன் செய்ய
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# உங்களின் API விவரங்கள்
 API_ID = "33442108"
 API_HASH = "db58bfc24809316cecb3f5c83e84116c"
 BOT_TOKEN = "8281564589:AAE7NGNs3KZZ-Dnu94juPv2ecoJfnfMFDdc"
@@ -34,35 +31,49 @@ user_thumbnails = {}
 
 @app.on_message(filters.command("start"))
 def start(client, message):
-    message.reply_text("Hi! முதலில் ஒரு Photo-வை அனுப்புங்கள் (அது Thumbnail ஆக சேமிக்கப்படும்). பின்பு Video-வை அனுப்புங்கள்.")
+    message.reply_text("Hi! முதலில் ஒரு Photo-வை அனுப்புங்கள். பின்பு Video-வை 'File' ஆக அனுப்புங்கள்.")
 
-@app.on_message(filters.photo)
-def save_thumb(client, message):
+# Photo, Video மற்றும் Document (File) அனைத்தையும் கையாளும் புதிய ஃபில்டர்
+@app.on_message(filters.photo | filters.video | filters.document)
+def handle_media(client, message):
     user_id = message.from_user.id
-    if not os.path.exists("downloads"):
-        os.makedirs("downloads")
-    file_path = message.download(file_name=f"downloads/{user_id}_thumb.jpg")
-    user_thumbnails[user_id] = file_path
-    message.reply_text("✅ Thumbnail சேமிக்கப்பட்டது! இப்போது Video-வை அனுப்புங்கள்.")
-
-@app.on_message(filters.video)
-def change_thumb(client, message):
-    user_id = message.from_user.id
-    if user_id in user_thumbnails:
-        msg = message.reply_text("⏳ Processing video... Please wait.")
-        video_path = message.download()
-        thumb_path = user_thumbnails[user_id]
+    
+    # 1. Photo அல்லது Image File ஆக அனுப்பினால்
+    if message.photo or (message.document and message.document.mime_type and message.document.mime_type.startswith("image/")):
+        if not os.path.exists("downloads"):
+            os.makedirs("downloads")
+        file_path = message.download(file_name=f"downloads/{user_id}_thumb.jpg")
+        user_thumbnails[user_id] = file_path
+        message.reply_text("✅ Thumbnail சேமிக்கப்பட்டது! இப்போது Video-வை 'File' ஆக அனுப்புங்கள்.")
         
-        client.send_video(
-            chat_id=message.chat.id,
-            video=video_path,
-            thumb=thumb_path,
-            caption="Here is your video with the new custom thumbnail!"
-        )
-        os.remove(video_path)
-        msg.delete()
-    else:
-        message.reply_text("❌ முதலில் ஒரு Photo-வை Thumbnail ஆக அனுப்புங்கள்!")
+    # 2. Video அல்லது Video File ஆக அனுப்பினால்
+    elif message.video or (message.document and message.document.mime_type and message.document.mime_type.startswith("video/")):
+        if user_id in user_thumbnails:
+            msg = message.reply_text("⏳ Processing video file... Please wait.")
+            video_path = message.download()
+            thumb_path = user_thumbnails[user_id]
+            
+            # File ஆக அனுப்பியிருந்தால் File ஆகவே திருப்பி அனுப்ப
+            if message.document:
+                client.send_document(
+                    chat_id=message.chat.id,
+                    document=video_path,
+                    thumb=thumb_path,
+                    caption="Uploaded via Bot"
+                )
+            # சாதாரண Video ஆக அனுப்பியிருந்தால் Video ஆகவே திருப்பி அனுப்ப
+            else:
+                client.send_video(
+                    chat_id=message.chat.id,
+                    video=video_path,
+                    thumb=thumb_path,
+                    caption="Uploaded via Bot"
+                )
+                
+            os.remove(video_path)
+            msg.delete()
+        else:
+            message.reply_text("❌ முதலில் ஒரு Photo-வை Thumbnail ஆக அனுப்புங்கள்!")
 
 print("Bot is alive and running...")
 app.run()
