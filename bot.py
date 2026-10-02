@@ -3,13 +3,12 @@ loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 import os
+import time
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pyrogram import Client, filters
 from PIL import Image
-import inspect
 
-# 24/7 ஆன்லைனில் வைத்திருக்க ஒரு Dummy Server
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -24,7 +23,6 @@ def run_dummy_server():
 
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
-# உங்களின் API விவரங்கள்
 API_ID = "33442108"
 API_HASH = "db58bfc24809316cecb3f5c83e84116c"
 BOT_TOKEN = "8281564589:AAE7NGNs3KZZ-Dnu94juPv2ecoJfnfMFDdc"
@@ -47,16 +45,22 @@ def handle_media(client, message):
             os.makedirs("downloads")
         
         msg = message.reply_text("⏳ Saving and resizing thumbnail...")
-        raw_path = message.download(file_name=f"downloads/{user_id}_raw.jpg")
-        thumb_path = f"downloads/{user_id}_thumb.jpg"
+        
+        # Caching-ஐ தவிர்க்க ஒவ்வொரு படத்திற்கும் ஒரு Unique பெயர் (Timestamp)
+        unique_id = int(time.time())
+        raw_path = message.download(file_name=f"downloads/{user_id}_{unique_id}_raw.jpg")
+        thumb_path = f"downloads/{user_id}_{unique_id}_thumb.jpg"
         
         try:
-            # Telegram ரூல்ஸ் படி 320x320 அளவுக்குள் இமேஜை Resize செய்கிறது
             img = Image.open(raw_path)
             img.thumbnail((320, 320))
             img.save(thumb_path, "JPEG")
             os.remove(raw_path)
             
+            # பழைய thumbnail ஃபைல் சிஸ்டமில் இருந்தால் டெலீட் செய்ய
+            if user_id in user_thumbnails and os.path.exists(user_thumbnails[user_id]):
+                os.remove(user_thumbnails[user_id])
+                
             user_thumbnails[user_id] = thumb_path
             msg.edit_text("✅ Thumbnail சேமிக்கப்பட்டது! (320x320 Resized).\nஇப்போது Video-வை 'File' ஆக அனுப்புங்கள்.")
         except Exception as e:
@@ -70,32 +74,23 @@ def handle_media(client, message):
             thumb_path = user_thumbnails[user_id]
             
             try:
-                kwargs = {
-                    "chat_id": message.chat.id,
-                    "caption": "Uploaded via Bot"
-                }
-                
-                # Pyrogram Version Compatibility
-                if "thumbnail" in inspect.signature(client.send_document).parameters:
-                    kwargs["thumbnail"] = thumb_path
-                else:
-                    kwargs["thumb"] = thumb_path
-                    
                 if message.document:
-                    kwargs["document"] = video_path
-                    kwargs["force_document"] = True
-                    
-                    # ஒரிஜினல் பைல் பெயரை எடுப்பது
-                    file_name = message.document.file_name
-                    if not file_name:
-                        file_name = "video.mp4"
-                    kwargs["file_name"] = file_name
-                    
-                    client.send_document(**kwargs)
+                    file_name = message.document.file_name or "video.mp4"
+                    client.send_document(
+                        chat_id=message.chat.id,
+                        document=video_path,
+                        thumb=thumb_path,
+                        caption="Uploaded via Bot",
+                        force_document=True,
+                        file_name=file_name
+                    )
                 else:
-                    kwargs["video"] = video_path
-                    client.send_video(**kwargs)
-                    
+                    client.send_video(
+                        chat_id=message.chat.id,
+                        video=video_path,
+                        thumb=thumb_path,
+                        caption="Uploaded via Bot"
+                    )
             except Exception as e:
                 message.reply_text(f"❌ Error sending file: {e}")
                 
